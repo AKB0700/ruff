@@ -352,8 +352,8 @@ def f(
     c: tuple[str],
 ):
     # Equality comparisons are always valid
-    reveal_type(a == b)  # revealed: Unknown
-    reveal_type(a != b)  # revealed: Unknown
+    reveal_type(a == b)  # revealed: bool
+    reveal_type(a != b)  # revealed: bool
 
     # Ordering comparisons between incompatible types should emit errors
     # error: [unsupported-operator] "Operator `<` is not supported between objects of type `tuple[int, ...]` and `tuple[str, ...]`"
@@ -400,16 +400,16 @@ Comparisons between homogeneous tuples with compatible element types should work
 ```py
 def _(a: tuple[int, ...], b: tuple[int, ...], c: tuple[bool, ...]):
     # Same element types - always valid
-    reveal_type(a == b)  # revealed: Unknown
-    reveal_type(a != b)  # revealed: Unknown
-    reveal_type(a < b)  # revealed: Unknown
-    reveal_type(a <= b)  # revealed: Unknown
-    reveal_type(a > b)  # revealed: Unknown
-    reveal_type(a >= b)  # revealed: Unknown
+    reveal_type(a == b)  # revealed: bool
+    reveal_type(a != b)  # revealed: bool
+    reveal_type(a < b)  # revealed: bool
+    reveal_type(a <= b)  # revealed: bool
+    reveal_type(a > b)  # revealed: bool
+    reveal_type(a >= b)  # revealed: bool
 
     # int and bool are compatible for comparison
-    reveal_type(a < c)  # revealed: Unknown
-    reveal_type(c < a)  # revealed: Unknown
+    reveal_type(a < c)  # revealed: bool
+    reveal_type(c < a)  # revealed: bool
 ```
 
 ### Tuples with Prefixes and Suffixes
@@ -441,7 +441,7 @@ def _(
     prefix_int_var_bool: tuple[int, *tuple[bool, ...]],
 ):
     # Prefix `int` vs. prefix `int`, variable `int` vs. variable `bool` are all comparable.
-    reveal_type(prefix_int_var_int < prefix_int_var_bool)  # revealed: Unknown
+    reveal_type(prefix_int_var_int < prefix_int_var_bool)  # revealed: bool
 ```
 
 ## Chained comparisons with elements that incorrectly implement `__bool__`

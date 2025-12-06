@@ -18,8 +18,8 @@ mdtest path: crates/ty_python_semantic/resources/mdtest/comparison/tuples.md
  4 |     c: tuple[str],
  5 | ):
  6 |     # Equality comparisons are always valid
- 7 |     reveal_type(a == b)  # revealed: Unknown
- 8 |     reveal_type(a != b)  # revealed: Unknown
+ 7 |     reveal_type(a == b)  # revealed: bool
+ 8 |     reveal_type(a != b)  # revealed: bool
  9 | 
 10 |     # Ordering comparisons between incompatible types should emit errors
 11 |     # error: [unsupported-operator] "Operator `<` is not supported between objects of type `tuple[int, ...]` and `tuple[str, ...]`"

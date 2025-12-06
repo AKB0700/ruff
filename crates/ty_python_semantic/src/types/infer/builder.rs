@@ -11060,12 +11060,14 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
                             "infer_binary_type_comparison should never return None for `CmpOp::Eq`",
                         );
 
-                    match pairwise_eq_result.try_bool(self.db()).unwrap_or_else(|err| {
-                        // TODO: We should, whenever possible, pass the range of the left and right elements
-                        //   instead of the range of the whole tuple.
-                        err.report_diagnostic(&self.context, range);
-                        err.fallback_truthiness()
-                    }) {
+                    match pairwise_eq_result
+                        .try_bool(self.db())
+                        .unwrap_or_else(|err| {
+                            // TODO: We should, whenever possible, pass the range of the left and right elements
+                            //   instead of the range of the whole tuple.
+                            err.report_diagnostic(&self.context, range);
+                            err.fallback_truthiness()
+                        }) {
                         // - AlwaysTrue : Continue to the next pair for lexicographic comparison
                         Truthiness::AlwaysTrue => continue,
                         // - AlwaysFalse:
@@ -11125,71 +11127,88 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
             // compare lexicographically. However, we still need to verify that the
             // element types are comparable for ordering comparisons.
 
-            // For equality comparisons (==, !=), any two objects can be compared.
+            // For equality comparisons (==, !=), any two objects can be compared,
+            // and tuple equality always returns bool regardless of element __eq__ return types.
             (TupleSpec::Variable(_), _) | (_, TupleSpec::Variable(_))
                 if matches!(op, RichCompareOperator::Eq | RichCompareOperator::Ne) =>
             {
-                Ok(Type::unknown())
+                Ok(KnownClass::Bool.to_instance(self.db()))
             }
 
             // Both variable: check all elements that could potentially be compared.
             (TupleSpec::Variable(left_var), TupleSpec::Variable(right_var)) => {
+                let mut builder = UnionBuilder::new(self.db());
+
                 // 1. Compare prefix elements at matching positions.
                 for (l_el, r_el) in left_var.prefix_elements().zip(right_var.prefix_elements()) {
-                    self.infer_binary_type_comparison(*l_el, op.into(), *r_el, range, visitor)?;
+                    builder = builder.add(self.infer_binary_type_comparison(
+                        *l_el,
+                        op.into(),
+                        *r_el,
+                        range,
+                        visitor,
+                    )?);
                 }
 
                 // 2. Left's extra prefix elements are compared with right's variable.
                 for l_el in left_var.prefix_elements().skip(right_var.prefix.len()) {
-                    self.infer_binary_type_comparison(
+                    builder = builder.add(self.infer_binary_type_comparison(
                         *l_el,
                         op.into(),
                         right_var.variable,
                         range,
                         visitor,
-                    )?;
+                    )?);
                 }
 
                 // 3. Right's extra prefix elements are compared with left's variable.
                 for r_el in right_var.prefix_elements().skip(left_var.prefix.len()) {
-                    self.infer_binary_type_comparison(
+                    builder = builder.add(self.infer_binary_type_comparison(
                         left_var.variable,
                         op.into(),
                         *r_el,
                         range,
                         visitor,
-                    )?;
+                    )?);
                 }
 
                 // 4. Variable elements can be compared at any overlapping position.
-                self.infer_binary_type_comparison(
+                builder = builder.add(self.infer_binary_type_comparison(
                     left_var.variable,
                     op.into(),
                     right_var.variable,
                     range,
                     visitor,
-                )?;
+                )?);
 
                 // 5. Left's extra suffix elements are compared with right's variable.
-                for l_el in left_var.suffix_elements().rev().skip(right_var.suffix.len()) {
-                    self.infer_binary_type_comparison(
+                for l_el in left_var
+                    .suffix_elements()
+                    .rev()
+                    .skip(right_var.suffix.len())
+                {
+                    builder = builder.add(self.infer_binary_type_comparison(
                         *l_el,
                         op.into(),
                         right_var.variable,
                         range,
                         visitor,
-                    )?;
+                    )?);
                 }
 
                 // 6. Right's extra suffix elements are compared with left's variable.
-                for r_el in right_var.suffix_elements().rev().skip(left_var.suffix.len()) {
-                    self.infer_binary_type_comparison(
+                for r_el in right_var
+                    .suffix_elements()
+                    .rev()
+                    .skip(left_var.suffix.len())
+                {
+                    builder = builder.add(self.infer_binary_type_comparison(
                         left_var.variable,
                         op.into(),
                         *r_el,
                         range,
                         visitor,
-                    )?;
+                    )?);
                 }
 
                 // 7. Compare suffix elements at matching positions (from the end).
@@ -11198,17 +11217,34 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
                     .rev()
                     .zip(right_var.suffix_elements().rev())
                 {
-                    self.infer_binary_type_comparison(*l_el, op.into(), *r_el, range, visitor)?;
+                    builder = builder.add(self.infer_binary_type_comparison(
+                        *l_el,
+                        op.into(),
+                        *r_el,
+                        range,
+                        visitor,
+                    )?);
                 }
 
-                Ok(Type::unknown())
+                // Length comparison (when all elements are equal) returns bool.
+                builder = builder.add(KnownClass::Bool.to_instance(self.db()));
+
+                Ok(builder.build())
             }
 
             // Left variable, right fixed: check which elements could be compared.
             (TupleSpec::Variable(left_var), TupleSpec::Fixed(right_fixed)) => {
+                let mut builder = UnionBuilder::new(self.db());
+
                 // Compare left's prefix with right's corresponding elements.
                 for (l_el, r_el) in left_var.prefix_elements().zip(right_fixed.elements()) {
-                    self.infer_binary_type_comparison(*l_el, op.into(), *r_el, range, visitor)?;
+                    builder = builder.add(self.infer_binary_type_comparison(
+                        *l_el,
+                        op.into(),
+                        *r_el,
+                        range,
+                        visitor,
+                    )?);
                 }
 
                 // Compare left's suffix with right's corresponding elements (from end).
@@ -11217,7 +11253,13 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
                     .rev()
                     .zip(right_fixed.elements().rev())
                 {
-                    self.infer_binary_type_comparison(*l_el, op.into(), *r_el, range, visitor)?;
+                    builder = builder.add(self.infer_binary_type_comparison(
+                        *l_el,
+                        op.into(),
+                        *r_el,
+                        range,
+                        visitor,
+                    )?);
                 }
 
                 // Compare left's variable with right's "middle" elements
@@ -11229,23 +11271,34 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
                     .skip(middle_start)
                     .take(middle_end.saturating_sub(middle_start))
                 {
-                    self.infer_binary_type_comparison(
+                    builder = builder.add(self.infer_binary_type_comparison(
                         left_var.variable,
                         op.into(),
                         *r_el,
                         range,
                         visitor,
-                    )?;
+                    )?);
                 }
 
-                Ok(Type::unknown())
+                // Length comparison (when all elements are equal) returns bool.
+                builder = builder.add(KnownClass::Bool.to_instance(self.db()));
+
+                Ok(builder.build())
             }
 
             // Left fixed, right variable: check which elements could be compared.
             (TupleSpec::Fixed(left_fixed), TupleSpec::Variable(right_var)) => {
+                let mut builder = UnionBuilder::new(self.db());
+
                 // Compare left's elements with right's prefix.
                 for (l_el, r_el) in left_fixed.elements().zip(right_var.prefix_elements()) {
-                    self.infer_binary_type_comparison(*l_el, op.into(), *r_el, range, visitor)?;
+                    builder = builder.add(self.infer_binary_type_comparison(
+                        *l_el,
+                        op.into(),
+                        *r_el,
+                        range,
+                        visitor,
+                    )?);
                 }
 
                 // Compare left's elements (from end) with right's suffix.
@@ -11254,7 +11307,13 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
                     .rev()
                     .zip(right_var.suffix_elements().rev())
                 {
-                    self.infer_binary_type_comparison(*l_el, op.into(), *r_el, range, visitor)?;
+                    builder = builder.add(self.infer_binary_type_comparison(
+                        *l_el,
+                        op.into(),
+                        *r_el,
+                        range,
+                        visitor,
+                    )?);
                 }
 
                 // Compare left's "middle" elements with right's variable.
@@ -11265,16 +11324,19 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
                     .skip(middle_start)
                     .take(middle_end.saturating_sub(middle_start))
                 {
-                    self.infer_binary_type_comparison(
+                    builder = builder.add(self.infer_binary_type_comparison(
                         *l_el,
                         op.into(),
                         right_var.variable,
                         range,
                         visitor,
-                    )?;
+                    )?);
                 }
 
-                Ok(Type::unknown())
+                // Length comparison (when all elements are equal) returns bool.
+                builder = builder.add(KnownClass::Bool.to_instance(self.db()));
+
+                Ok(builder.build())
             }
         }
     }
