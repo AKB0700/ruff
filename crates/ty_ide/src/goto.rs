@@ -19,7 +19,7 @@ use ty_python_semantic::types::ide_support::{
 };
 use ty_python_semantic::{
     HasDefinition, HasType, ImportAliasResolution, SemanticModel, definitions_for_imported_symbol,
-    definitions_for_name,
+    definitions_for_name, definitions_for_name_in_scope,
 };
 
 #[derive(Clone, Debug)]
@@ -392,10 +392,24 @@ impl GotoTarget<'_> {
             GotoTarget::Expression(expression) => {
                 definitions_for_expression(model, *expression, alias_resolution)
             }
-            // For already-defined symbols, they are their own definitions
-            GotoTarget::FunctionDef(function) => Some(vec![ResolvedDefinition::Definition(
-                function.definition(model),
-            )]),
+            // For function definitions, get all definitions with the same name in the scope.
+            // This is important for overloaded functions where multiple definitions share the same name.
+            GotoTarget::FunctionDef(function) => {
+                let definition = function.definition(model);
+                let db = model.db();
+                let file = definition.file(db);
+                let file_scope = definition.file_scope(db);
+                let Some(name) = definition.name(db) else {
+                    return Some(Definitions(vec![ResolvedDefinition::Definition(definition)]));
+                };
+                Some(definitions_for_name_in_scope(
+                    db,
+                    file,
+                    file_scope,
+                    &name,
+                    alias_resolution,
+                ))
+            }
 
             GotoTarget::ClassDef(class) => Some(vec![ResolvedDefinition::Definition(
                 class.definition(model),

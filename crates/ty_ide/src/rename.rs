@@ -1486,20 +1486,26 @@ result = func(10, y=20)
             )
             .build();
 
-        // TODO(submodule-imports): this is incorrect, we should rename the `subpkg` int
-        // and the RHS of the import statement (but *not* rename the LHS).
+        // The rename correctly identifies:
+        // 1. The RHS of the import (`from .subpkg import subpkg`)
+        // 2. The usage (`x = subpkg`)
+        // 3. The original definition in the subpackage (`subpkg: int = 10`)
         //
-        // However us being cautious here *would* be good as the rename will actually
-        // result in a `subpkg` variable still existing in this code, as the import's LHS
-        // `DefinitionKind::ImportFromSubmodule` would stop being overwritten by the RHS!
+        // Note: The LHS submodule name is NOT renamed, which is correct.
         assert_snapshot!(test.rename("mypkg"), @r"
-        info[rename]: Rename symbol (found 1 locations)
-         --> mypackage/__init__.py:4:5
+        info[rename]: Rename symbol (found 3 locations)
+         --> mypackage/__init__.py:2:21
           |
         2 | from .subpkg import subpkg
+          |                     ^^^^^^
         3 |
         4 | x = subpkg
-          |     ^^^^^^
+          |     ------
+          |
+         ::: mypackage/subpkg/__init__.py:2:1
+          |
+        2 | subpkg: int = 10
+          | ------
           |
         ");
     }
@@ -1534,23 +1540,31 @@ result = func(10, y=20)
             .build();
 
         assert_snapshot!(test.rename("better_name"), @r#"
-        info[rename]: Rename symbol (found 3 locations)
-         --> lib.py:5:5
-          |
-        4 | @overload
-        5 | def test() -> None: ...
-          |     ^^^^
-        6 | @overload
-        7 | def test(a: str) -> str: ...
-          |
-         ::: main.py:2:17
-          |
-        2 | from lib import test
-          |                 ----
-        3 |
-        4 | test("test")
-          | ----
-          |
+        info[rename]: Rename symbol (found 6 locations)
+          --> lib.py:5:5
+           |
+         4 | @overload
+         5 | def test() -> None: ...
+           |     ^^^^
+         6 | @overload
+         7 | def test(a: str) -> str: ...
+           |     ----
+         8 | @overload
+         9 | def test(a: int) -> int: ...
+           |     ----
+        10 |
+        11 | def test(a: Any) -> Any:
+           |     ----
+        12 |     return a
+           |
+          ::: main.py:2:17
+           |
+         2 | from lib import test
+           |                 ----
+         3 |
+         4 | test("test")
+           | ----
+           |
         "#);
     }
 
@@ -1586,23 +1600,31 @@ result = func(10, y=20)
             .build();
 
         assert_snapshot!(test.rename("better_name"), @r#"
-        info[rename]: Rename symbol (found 2 locations)
-         --> lib.py:6:9
-          |
-        4 | class Test:
-        5 |     @overload
-        6 |     def test() -> None: ...
-          |         ^^^^
-        7 |     @overload
-        8 |     def test(a: str) -> str: ...
-          |
-         ::: main.py:4:8
-          |
-        2 | from lib import Test
-        3 |
-        4 | Test().test("test")
-          |        ----
-          |
+        info[rename]: Rename symbol (found 5 locations)
+          --> lib.py:6:9
+           |
+         4 | class Test:
+         5 |     @overload
+         6 |     def test() -> None: ...
+           |         ^^^^
+         7 |     @overload
+         8 |     def test(a: str) -> str: ...
+           |         ----
+         9 |     @overload
+        10 |     def test(a: int) -> int: ...
+           |         ----
+        11 |
+        12 |     def test(a: Any) -> Any:
+           |         ----
+        13 |         return a
+           |
+          ::: main.py:4:8
+           |
+         2 | from lib import Test
+         3 |
+         4 | Test().test("test")
+           |        ----
+           |
         "#);
     }
 
@@ -1636,23 +1658,31 @@ result = func(10, y=20)
             .build();
 
         assert_snapshot!(test.rename("better_name"), @r#"
-        info[rename]: Rename symbol (found 3 locations)
-         --> main.py:2:17
-          |
-        2 | from lib import test
-          |                 ^^^^
-        3 |
-        4 | test("test")
-          | ----
-          |
-         ::: lib.py:5:5
-          |
-        4 | @overload
-        5 | def test() -> None: ...
-          |     ----
-        6 | @overload
-        7 | def test(a: str) -> str: ...
-          |
+        info[rename]: Rename symbol (found 6 locations)
+          --> main.py:2:17
+           |
+         2 | from lib import test
+           |                 ^^^^
+         3 |
+         4 | test("test")
+           | ----
+           |
+          ::: lib.py:5:5
+           |
+         4 | @overload
+         5 | def test() -> None: ...
+           |     ----
+         6 | @overload
+         7 | def test(a: str) -> str: ...
+           |     ----
+         8 | @overload
+         9 | def test(a: int) -> int: ...
+           |     ----
+        10 |
+        11 | def test(a: Any) -> Any:
+           |     ----
+        12 |     return a
+           |
         "#);
     }
 
@@ -1728,7 +1758,7 @@ result = func(10, y=20)
             .build();
 
         assert_snapshot!(test.rename("better_name"), @r"
-        info[rename]: Rename symbol (found 4 locations)
+        info[rename]: Rename symbol (found 5 locations)
          --> lib.py:4:9
           |
         2 | class Foo:
@@ -1740,6 +1770,7 @@ result = func(10, y=20)
         7 |     @my_property.setter
           |      -----------
         8 |     def my_property(self, value: int) -> None:
+          |         -----------
         9 |         pass
           |
          ::: main.py:4:13
@@ -1754,8 +1785,6 @@ result = func(10, y=20)
         ");
     }
 
-    // TODO: this should rename the name of the function decorated with
-    // `@my_property.deleter` as well as the getter function name
     #[test]
     fn rename_property_with_deleter() {
         let test = CursorTest::builder()
@@ -1784,7 +1813,7 @@ result = func(10, y=20)
             .build();
 
         assert_snapshot!(test.rename("better_name"), @r"
-        info[rename]: Rename symbol (found 4 locations)
+        info[rename]: Rename symbol (found 5 locations)
          --> lib.py:4:9
           |
         2 | class Foo:
@@ -1796,6 +1825,7 @@ result = func(10, y=20)
         7 |     @my_property.deleter
           |      -----------
         8 |     def my_property(self) -> None:
+          |         -----------
         9 |         pass
           |
          ::: main.py:4:13
@@ -1809,10 +1839,6 @@ result = func(10, y=20)
           |
         ");
     }
-
-    // TODO: this should rename the name of the functions decorated with
-    // `@my_property.deleter` and `@my_property.deleter` as well as the
-    // getter function name
     #[test]
     fn rename_property_with_setter_and_deleter() {
         let test = CursorTest::builder()
@@ -1846,7 +1872,7 @@ result = func(10, y=20)
             .build();
 
         assert_snapshot!(test.rename("better_name"), @r"
-        info[rename]: Rename symbol (found 6 locations)
+        info[rename]: Rename symbol (found 8 locations)
           --> lib.py:4:9
            |
          2 | class Foo:
@@ -1858,11 +1884,13 @@ result = func(10, y=20)
          7 |     @my_property.setter
            |      -----------
          8 |     def my_property(self, value: int) -> None:
+           |         -----------
          9 |         pass
         10 |
         11 |     @my_property.deleter
            |      -----------
         12 |     def my_property(self) -> None:
+           |         -----------
         13 |         pass
            |
           ::: main.py:4:13

@@ -190,6 +190,53 @@ pub fn definitions_for_name<'db>(
     }
 }
 
+/// Returns all definitions for a name in a specific scope.
+/// This is useful when you have a Definition and want to find all other definitions
+/// with the same name in its scope (e.g., for overloaded functions).
+pub fn definitions_for_name_in_scope<'db>(
+    db: &'db dyn Db,
+    file: ruff_db::files::File,
+    file_scope_id: crate::semantic_index::scope::FileScopeId,
+    name_str: &str,
+    alias_resolution: ImportAliasResolution,
+) -> Vec<ResolvedDefinition<'db>> {
+    let index = semantic_index(db, file);
+    let place_table = index.place_table(file_scope_id);
+
+    let Some(symbol_id) = place_table.symbol_id(name_str) else {
+        return vec![];
+    };
+
+    let use_def_map = index.use_def_map(file_scope_id);
+    let mut all_definitions = FxIndexSet::default();
+
+    // Get all definitions (both bindings and declarations) for this symbol
+    let bindings = use_def_map.all_reachable_symbol_bindings(symbol_id);
+    let declarations = use_def_map.all_reachable_symbol_declarations(symbol_id);
+
+    for binding in bindings {
+        if let Some(def) = binding.binding.definition() {
+            all_definitions.insert(def);
+        }
+    }
+
+    for declaration in declarations {
+        if let Some(def) = declaration.declaration.definition() {
+            all_definitions.insert(def);
+        }
+    }
+
+    // Resolve import definitions to their targets
+    let mut resolved_definitions = Vec::new();
+
+    for definition in &all_definitions {
+        let resolved = resolve_definition(db, *definition, Some(name_str), alias_resolution);
+        resolved_definitions.extend(resolved);
+    }
+
+    resolved_definitions
+}
+
 fn is_float_or_complex_annotation(db: &dyn Db, ty: UnionType, name: &str) -> bool {
     let float_or_complex_ty = match name {
         "float" => UnionType::from_elements(

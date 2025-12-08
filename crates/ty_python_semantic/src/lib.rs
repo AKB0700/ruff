@@ -30,8 +30,8 @@ pub use suppression::create_suppression_fix;
 pub use types::DisplaySettings;
 pub use types::ide_support::{
     ImportAliasResolution, ResolvedDefinition, definitions_for_attribute, definitions_for_bin_op,
-    definitions_for_imported_symbol, definitions_for_name, definitions_for_unary_op,
-    map_stub_definition,
+    definitions_for_imported_symbol, definitions_for_name, definitions_for_name_in_scope,
+    definitions_for_unary_op, map_stub_definition,
 };
 
 pub mod ast_node_ref;

@@ -364,12 +364,13 @@ impl LocalReferencesFinder<'_> {
 
     /// Check if `Vec<NavigationTarget>` match our target definitions
     fn navigation_targets_match(&self, current_targets: &NavigationTargets) -> bool {
-        // Since we're comparing the same symbol, all definitions should be equivalent
-        // We only need to check against the first target definition
-        if let Some(first_target) = self.target_definitions.iter().next() {
+        // Check if any current target matches any of our target definitions.
+        // This is important for overloaded functions where each overload is a separate
+        // definition but they all refer to the same logical symbol.
+        for target_def in self.target_definitions {
             for current_target in current_targets {
-                if current_target.file == first_target.file
-                    && current_target.focus_range == first_target.focus_range
+                if current_target.file == target_def.file
+                    && current_target.focus_range == target_def.focus_range
                 {
                     return true;
                 }

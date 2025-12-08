@@ -2101,15 +2101,34 @@ func<CURSOR>_alias()
             )
             .build();
 
-        // TODO: this should also highlight the RHS subpkg in the import
+        // The references correctly identify:
+        // 1. The RHS of the import (`from .subpkg import subpkg`)
+        // 2. The usage (`x = subpkg`)
+        // 3. The original definition in the subpackage (`subpkg: int = 10`)
         assert_snapshot!(test.references(), @r"
         info[references]: Reference 1
+         --> mypackage/__init__.py:2:21
+          |
+        2 | from .subpkg import subpkg
+          |                     ^^^^^^
+        3 |
+        4 | x = subpkg
+          |
+
+        info[references]: Reference 2
          --> mypackage/__init__.py:4:5
           |
         2 | from .subpkg import subpkg
         3 |
         4 | x = subpkg
           |     ^^^^^^
+          |
+
+        info[references]: Reference 3
+         --> mypackage/subpkg/__init__.py:2:1
+          |
+        2 | subpkg: int = 10
+          | ^^^^^^
           |
         ");
     }
