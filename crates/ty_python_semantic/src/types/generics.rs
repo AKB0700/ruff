@@ -1872,8 +1872,8 @@ impl<'db> SpecializationBuilder<'db> {
         Ok(())
     }
 
-    /// Infer type mappings for the specialization in the reverse direction, i.e., where the given type contains
-    /// inferable type variables.
+    /// Infer type mappings for the specialization in the reverse direction, i.e., where the given type, not the
+    /// declared type, contains inferable type variables.
     pub(crate) fn infer_reverse(
         &mut self,
         formal: Type<'db>,
@@ -1885,7 +1885,7 @@ impl<'db> SpecializationBuilder<'db> {
             TypeContext::default(),
         );
 
-        // Collect all type variables on the actual type.
+        // Collect any type variables on the formal type.
         let mut formal_type_vars = Vec::new();
         formal.visit_specialization(self.db, TypeContext::default(), |typevar, _, _, _| {
             formal_type_vars.push(typevar);

@@ -7738,7 +7738,14 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
                 generic_context.inferable_typevars(self.db()),
             );
 
-            if let Some(tcx) = tcx.annotation {
+            if let Some(tcx) = tcx.annotation
+                // If there are multiple potential type contexts, we fallback to `Unknown`.
+                // TODO: We could perform multi-inference here.
+                && tcx
+                    .filter_union(self.db(), |ty| ty.class_specialization(self.db()).is_some())
+                    .class_specialization(self.db())
+                    .is_some()
+            {
                 let collection_instance =
                     Type::instance(self.db(), ClassType::Generic(collection_alias));
                 builder.infer_reverse(tcx, collection_instance).ok()?;
