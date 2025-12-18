@@ -120,7 +120,9 @@ fn run_check(args: CheckCommand) -> anyhow::Result<ExitStatus> {
         .map(|path| SystemPath::absolute(path, &cwd));
 
     let mut project_metadata = match &config_file {
-        Some(config_file) => ProjectMetadata::from_config_file(config_file.clone(), &system)?,
+        Some(config_file) => {
+            ProjectMetadata::from_config_file(config_file.clone(), &project_path, &system)?
+        }
         None => ProjectMetadata::discover(&project_path, &system)?,
     };
 
