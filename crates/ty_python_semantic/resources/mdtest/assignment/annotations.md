@@ -616,6 +616,7 @@ python-version = "3.12"
 ```
 
 ```py
+from collections import defaultdict
 from typing import Any, Iterable, Literal, MutableSequence, Sequence
 
 x1: Sequence[Any] = [1, 2, 3]
@@ -627,6 +628,9 @@ reveal_type(x2)  # revealed: list[Any]
 x3: Iterable[Any] = [1, 2, 3]
 reveal_type(x3)  # revealed: list[Any]
 
+x4: Iterable[Iterable[Any]] = [[1, 2, 3]]
+reveal_type(x4)  # revealed: list[Iterable[Any]]
+
 class X[T]:
     value: T
 
@@ -637,17 +641,26 @@ class A[T](X[T]): ...
 def a[T](value: T) -> A[T]:
     return A(value)
 
-x4: A[object] = A(1)
-reveal_type(x4)  # revealed: A[object]
-
-x5: X[object] = A(1)
+x5: A[object] = A(1)
 reveal_type(x5)  # revealed: A[object]
 
-x6: X[object] | None = A(1)
+x6: X[object] = A(1)
 reveal_type(x6)  # revealed: A[object]
 
-x7: X[object] | None = a(1)
+x7: X[object] | None = A(1)
 reveal_type(x7)  # revealed: A[object]
+
+x8: X[object] | None = a(1)
+reveal_type(x8)  # revealed: A[object]
+
+def f[T](x: T) -> list[list[T]]:
+    return [[x]]
+
+x9: Sequence[Sequence[Any]] = f(1)
+reveal_type(x9)  # revealed: list[list[Any]]
+
+x10: dict[int, dict[str, int]] = defaultdict(dict)
+reveal_type(x10)  # revealed: defaultdict[int, dict[str, int]]
 ```
 
 ## Narrow generic unions

@@ -1,6 +1,7 @@
 use std::cell::RefCell;
 use std::collections::hash_map::Entry;
 use std::fmt::Display;
+use std::iter;
 
 use itertools::{Either, Itertools};
 use ruff_python_ast as ast;
@@ -1014,7 +1015,7 @@ impl<'db> Specialization<'db> {
             return self.materialize_impl(db, *materialization_kind, visitor);
         }
 
-        if *type_mapping == TypeMapping::IdentitySpecialization {
+        if let TypeMapping::IdentitySpecialization = type_mapping {
             return self.generic_context(db).identity_specialization(db);
         }
 
@@ -1749,6 +1750,17 @@ impl<'db> SpecializationBuilder<'db> {
                 }
             }
 
+            (formal, Type::ProtocolInstance(actual_protocol)) => {
+                if let Some(actual_nominal) = actual_protocol.to_nominal_instance() {
+                    return self.infer_map_impl(
+                        formal,
+                        Type::NominalInstance(actual_nominal),
+                        polarity,
+                        f,
+                    );
+                }
+            }
+
             (formal, Type::NominalInstance(actual_nominal)) => {
                 // Special case: `formal` and `actual` are both tuples.
                 if let (Some(formal_tuple), Some(actual_tuple)) = (
@@ -1872,14 +1884,15 @@ impl<'db> SpecializationBuilder<'db> {
         Ok(())
     }
 
-    /// Infer type mappings for the specialization in the reverse direction, i.e., where the given type, not the
-    /// declared type, contains inferable type variables.
+    /// Infer type mappings for the specialization in the reverse direction, i.e., where the actual type, not the
+    /// formal type, contains inferable type variables.
     pub(crate) fn infer_reverse(
         &mut self,
         formal: Type<'db>,
         actual: Type<'db>,
     ) -> Result<(), SpecializationError<'db>> {
-        let identity_formal = formal.apply_type_mapping(
+        // Reset the formal type to its identity specialization.
+        let formal_identity = formal.apply_type_mapping(
             self.db,
             &TypeMapping::IdentitySpecialization,
             TypeContext::default(),
@@ -1891,30 +1904,57 @@ impl<'db> SpecializationBuilder<'db> {
             formal_type_vars.push(typevar);
         });
 
-        let inferable_type_vars = GenericContext::from_typevar_instances(self.db, formal_type_vars)
+        let inferable = GenericContext::from_typevar_instances(self.db, formal_type_vars)
             .inferable_typevars(self.db);
 
-        // Perform type inference in the forward direction with the inferable identity types,
-        // collecting the forward type mappings.
+        // Collect the formal type to which each formal type variable is mapped.
+        //
+        // TODO: We should already have this information as part of the `IdentitySpecialization` type
+        // mapping, but we don't have a great way to get access to it.
+        let identity_type_mappings = {
+            let mut builder = SpecializationBuilder::new(self.db, inferable);
+
+            // We have to manually handle unions here due to a limitation of the current constraint
+            // solver.
+            if let (Type::Union(formal_identity), Type::Union(formal)) = (formal_identity, formal) {
+                for (formal_identity, formal) in
+                    iter::zip(formal_identity.elements(self.db), formal.elements(self.db))
+                {
+                    builder.infer(*formal_identity, *formal)?;
+                }
+            } else {
+                builder.infer(formal_identity, formal)?;
+            }
+
+            builder.type_mappings().clone()
+        };
+
+        // Collect the actual type to which each formal type variable is mapped.
         let forward_type_mappings = {
-            let mut builder = SpecializationBuilder::new(self.db, inferable_type_vars);
-            builder.infer(identity_formal, actual)?;
+            let mut builder = SpecializationBuilder::new(self.db, inferable);
+            builder.infer(formal_identity, actual)?;
             builder.type_mappings().clone()
         };
 
         // If there are no forward type mappings, try the other direction.
+        // This is the base case for when `actual` is an inferable type variable.
         if forward_type_mappings.is_empty() {
             return self.infer(actual, formal);
         }
 
-        formal.try_visit_specialization(self.db, TypeContext::default(), |type_var, ty, _, _| {
-            // Reverse the type mappings and specialize them to their assigned types.
-            if let Some(formal) = forward_type_mappings.get(&type_var.identity(self.db)) {
-                self.infer(*formal, ty)?;
+        // Consider the reverse inference of `Sequence[int]` given `list[T]`.
+        //
+        // Given a forward type mapping of `T@Sequence` -> `T@list`, and a identity type mapping of
+        // `T@Sequence` -> `int`, we want to infer the reverse type mapping `T@list` -> `int`.
+        for (formal_type_var, actual_type) in forward_type_mappings {
+            if let Some(formal_type) = identity_type_mappings.get(&formal_type_var) {
+                // Note that it is possible that we need to recurse deeper, so we continue
+                // to perform a reverse inference on the nested types.
+                self.infer_reverse(*formal_type, actual_type)?;
             }
+        }
 
-            Ok(())
-        })
+        Ok(())
     }
 }
 

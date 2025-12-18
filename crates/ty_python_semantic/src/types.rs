@@ -10283,7 +10283,6 @@ impl<'db> BoundTypeVarInstance<'db> {
                     })
                     .unwrap_or(Type::TypeVar(self))
             }
-            TypeMapping::IdentitySpecialization => Type::TypeVar(self),
             TypeMapping::PartialSpecialization(partial) => {
                 let typevar = if self.is_paramspec(db) {
                     self.without_paramspec_attr(db)
@@ -10326,7 +10325,8 @@ impl<'db> BoundTypeVarInstance<'db> {
                     Type::TypeVar(self)
                 }
             }
-            TypeMapping::PromoteLiterals(_)
+            TypeMapping::IdentitySpecialization
+            | TypeMapping::PromoteLiterals(_)
             | TypeMapping::ReplaceParameterDefaults
             | TypeMapping::BindLegacyTypevars(_)
             | TypeMapping::EagerExpansion => Type::TypeVar(self),
