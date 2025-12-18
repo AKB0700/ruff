@@ -122,14 +122,14 @@ impl<Tag, T: Hash + Eq + Clone, R: Clone> CycleDetector<Tag, T, R> {
         ret
     }
 
-    pub fn try_visit<E>(&self, item: T, func: impl FnOnce() -> Result<R, E>) -> Result<R, E> {
+    pub fn try_visit(&self, item: T, func: impl FnOnce() -> Option<R>) -> Option<R> {
         if let Some(val) = self.cache.borrow().get(&item) {
-            return Ok(val.clone());
+            return Some(val.clone());
         }
 
         // We hit a cycle
         if !self.seen.borrow_mut().insert(item.clone()) {
-            return Ok(self.fallback.clone());
+            return Some(self.fallback.clone());
         }
 
         // Check depth limit to prevent stack overflow from recursive generic protocols
@@ -137,7 +137,7 @@ impl<Tag, T: Hash + Eq + Clone, R: Clone> CycleDetector<Tag, T, R> {
         let current_depth = self.depth.get();
         if current_depth >= MAX_RECURSION_DEPTH {
             self.seen.borrow_mut().pop();
-            return Ok(self.fallback.clone());
+            return Some(self.fallback.clone());
         }
         self.depth.set(current_depth + 1);
 
@@ -147,7 +147,7 @@ impl<Tag, T: Hash + Eq + Clone, R: Clone> CycleDetector<Tag, T, R> {
         self.seen.borrow_mut().pop();
         self.cache.borrow_mut().insert(item, ret.clone());
 
-        Ok(ret)
+        Some(ret)
     }
 }
 

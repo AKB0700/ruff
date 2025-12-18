@@ -1926,14 +1926,14 @@ impl<'db> SpecializationBuilder<'db> {
                 builder.infer(formal_identity, formal)?;
             }
 
-            builder.type_mappings().clone()
+            builder.into_type_mappings()
         };
 
         // Collect the actual type to which each formal type variable is mapped.
         let forward_type_mappings = {
             let mut builder = SpecializationBuilder::new(self.db, inferable);
             builder.infer(formal_identity, actual)?;
-            builder.type_mappings().clone()
+            builder.into_type_mappings()
         };
 
         // If there are no forward type mappings, try the other direction.

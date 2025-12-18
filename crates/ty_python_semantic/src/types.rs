@@ -3921,82 +3921,54 @@ impl<'db> Type<'db> {
     where
         F: FnMut(BoundTypeVarInstance<'db>, Type<'db>, TypeVarVariance, TypeContext<'db>),
     {
-        let try_visit = &mut |type_var, ty, variance, tcx| -> Result<(), ()> {
-            f(type_var, ty, variance, tcx);
-            Ok(())
-        };
-
-        let _ = self.try_visit_specialization(db, tcx, try_visit);
-    }
-
-    pub(crate) fn try_visit_specialization<F, E>(
-        self,
-        db: &'db dyn Db,
-        tcx: TypeContext<'db>,
-        mut f: F,
-    ) -> Result<(), E>
-    where
-        F: FnMut(
-            BoundTypeVarInstance<'db>,
-            Type<'db>,
-            TypeVarVariance,
-            TypeContext<'db>,
-        ) -> Result<(), E>,
-    {
-        self.try_visit_specialization_impl(
+        self.visit_specialization_impl(
             db,
             tcx,
             TypeVarVariance::Covariant,
             &mut f,
             &SpecializationVisitor::default(),
-        )
+        );
     }
 
-    fn try_visit_specialization_impl<E>(
+    fn visit_specialization_impl(
         self,
         db: &'db dyn Db,
         tcx: TypeContext<'db>,
         polarity: TypeVarVariance,
-        f: &mut dyn FnMut(
-            BoundTypeVarInstance<'db>,
-            Type<'db>,
-            TypeVarVariance,
-            TypeContext<'db>,
-        ) -> Result<(), E>,
+        f: &mut dyn FnMut(BoundTypeVarInstance<'db>, Type<'db>, TypeVarVariance, TypeContext<'db>),
         visitor: &SpecializationVisitor<'db>,
-    ) -> Result<(), E> {
+    ) {
         let instance = match self {
             Type::Union(union) => {
                 for element in union.elements(db) {
-                    element.try_visit_specialization_impl(db, tcx, polarity, f, visitor)?;
+                    element.visit_specialization_impl(db, tcx, polarity, f, visitor);
                 }
-                return Ok(());
+                return;
             }
             Type::Intersection(intersection) => {
                 for element in intersection.positive(db) {
-                    element.try_visit_specialization_impl(db, tcx, polarity, f, visitor)?;
+                    element.visit_specialization_impl(db, tcx, polarity, f, visitor);
                 }
-                return Ok(());
+                return;
             }
             Type::TypeAlias(alias) => {
-                visitor.try_visit(self, || {
+                visitor.visit(self, || {
                     alias
                         .value_type(db)
-                        .try_visit_specialization_impl(db, tcx, polarity, f, visitor)
-                })?;
-
-                return Ok(());
+                        .visit_specialization_impl(db, tcx, polarity, f, visitor);
+                });
+                return;
             }
             Type::NominalInstance(instance) => instance,
             Type::ProtocolInstance(protocol) => match protocol.to_nominal_instance() {
                 Some(instance) => instance,
-                None => return Ok(()),
+                None => return,
             },
-            _ => return Ok(()),
+            _ => return,
         };
 
         let (class_literal, Some(specialization)) = instance.class(db).class_literal(db) else {
-            return Ok(());
+            return;
         };
         let generic_context = specialization.generic_context(db);
 
@@ -4017,14 +3989,12 @@ impl<'db> Type<'db> {
             let variance = type_var.variance_with_polarity(db, polarity);
             let narrowed_tcx = TypeContext::new(tcx_mappings.get(&type_var.identity(db)).copied());
 
-            f(type_var, *ty, variance, narrowed_tcx)?;
+            f(type_var, *ty, variance, narrowed_tcx);
 
-            visitor.try_visit(*ty, || {
-                ty.try_visit_specialization_impl(db, narrowed_tcx, variance, f, visitor)
-            })?;
+            visitor.visit(*ty, || {
+                ty.visit_specialization_impl(db, narrowed_tcx, variance, f, visitor);
+            });
         }
-
-        Ok(())
     }
 
     /// Return true if there is just a single inhabitant for this type.
