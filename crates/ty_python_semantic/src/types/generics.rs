@@ -1578,7 +1578,15 @@ impl<'db> SpecializationBuilder<'db> {
                 if bound_typevar.is_paramspec(self.db) {
                     return;
                 }
-                *entry.get_mut() = UnionType::from_elements(self.db, [*entry.get(), ty]);
+                let existing = *entry.get();
+                *entry.get_mut() = UnionType::from_elements(self.db, [existing, ty]);
+
+                // If there are any other mappings for this typevar, recursively infer the new
+                // mapping we're about to add against them, to see if they can be further unified.
+                // TODO: Eventually we will create a single constraint set for the entire
+                // specialization, and this step will become unnecessary.
+                // Ignore any errors unifying the mappings.
+                let _ = self.infer_map_impl(existing, ty, variance, f);
             }
             Entry::Vacant(entry) => {
                 entry.insert(ty);
